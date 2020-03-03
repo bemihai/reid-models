@@ -13,10 +13,7 @@ Small changes from torchreid version:
 from torch import nn
 from torch.nn import functional as F
 
-
-
 """      Basic layers           """
-
 
 class ConvLayer(nn.Module):
     """ Convolution layer: convolution + batch norm + relu. """
@@ -100,9 +97,7 @@ class LiteConv3x3(nn.Module):
         x = self.relu(x)
         return x
 
-
-"""    Building blocks for omni-scale feature learning   """
-
+"""    Building blocks for omniscale feature learning   """
 
 class ChannelGate(nn.Module):
     """ A mini-network that generates channel-wise gates conditioned on input tensor (AG) """
@@ -211,7 +206,6 @@ class OSBlock(nn.Module):
 
 """    OSNet Architecture       """
 
-
 class OSNet(nn.Module):
     """
     Architecture of OSNet with input image size 256 x 128 (cf. Table 1 on page 5)
@@ -233,7 +227,7 @@ class OSNet(nn.Module):
 
         # conv1: conv + max pooling
         # paper sizes: (3, 256, 128) -> (64, 128, 64) -> (64, 64, 32)
-        self.conv1 = ConvLayer(1, channels[0], 7, stride=2, padding=3)
+        self.conv1 = ConvLayer(3, channels[0], 7, stride=2, padding=3)
         self.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
 
         # conv2: osnet bottlenecks + transition layer (1x1 conv + average pooling)
