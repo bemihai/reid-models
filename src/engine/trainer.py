@@ -12,7 +12,6 @@ def fit(train_loader, val_loader, model, loss_fn, optimizer, n_epochs, device, m
     Siamese network: Siamese loader, siamese model, contrastive loss.
     Online triplet learning: batch loader, embedding model, online triplet loss.
     """
-    writer = SummaryWriter(log_dir='runs')
     for epoch in range(n_epochs):
         # training step: compute training average loss and metrics
         train_loss, train_metrics = train_epoch(train_loader, model, loss_fn, optimizer, device, metrics)

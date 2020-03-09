@@ -1,3 +1,4 @@
+fvcore
 matplotlib
 imageio
 h5py
