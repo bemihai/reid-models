@@ -6,10 +6,10 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 from torch.backends import cudnn
 
-from src.networks import ClassificationNet
-from src.trainer import fit
-from src.osnet import OSBlock, OSNet
-from src.metrics import AccumulatedAccuracy
+from src.models.networks import ClassificationNet
+from src.engine.trainer import fit
+from src.models.osnet import OSBlock, OSNet
+from src.metrics.accuracy import AccumulatedAccuracy
 
 cudnn.benchmark = True
 batch_size = 256
