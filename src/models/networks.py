@@ -47,7 +47,7 @@ class ClassificationNet(nn.Module):
         out = self.extractor(x)
         out = self.activation(out)
         out = self.linear(out)
-        out = F.log_softmax(out, dim=-1)
+        # out = F.log_softmax(out, dim=-1)
         return out,
 
     # extract 2-dim features from penultimate layer
