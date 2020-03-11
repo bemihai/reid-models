@@ -147,3 +147,4 @@ dmypy.json
 /src/data/MNIST/raw/train-labels-idx1-ubyte
 /src/data/MNIST/raw/train-labels-idx1-ubyte.gz
 /src/data/MNIST/processed/training.pt
+/src/runs/

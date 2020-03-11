@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 
-class Metric:
+class Metric(object):
     def __init__(self):
         pass
 

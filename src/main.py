@@ -1,8 +1,9 @@
 """ CIFAR-10 classification """
 
+import os
+import contextlib
 import torch
 import torch.nn as nn
-from torch import optim
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 from torch.backends import cudnn
@@ -13,12 +14,9 @@ from losses.loss import CrossEntropyLoss
 
 from config.config import get_cfg
 from models.networks import ClassificationNet
-from engine.trainer import fit
+from engine.engine import Engine
 from models.osnet import OSBlock, OSNet
 from metrics.accuracy import AccumulatedAccuracy
-
-# device = torch.device('cuda' if cfg.use_gpu else 'cpu')
-kwargs = {'num_workers': 1, 'pin_memory': True} if torch.cuda.is_available() else {}
 
 train_transform = transforms.Compose([
     # transforms.RandomCrop(32, padding=4),
@@ -32,16 +30,16 @@ test_transform = transforms.Compose([
     transforms.Normalize((0.4915, 0.4823, 0.4468), (0.247, 0.2435, 0.2616)),
 ])
 
-cifar_training = datasets.CIFAR10('../data/', train=True, download=True, transform=train_transform)
-cifar_testing = datasets.CIFAR10('../data/', train=False, download=True, transform=train_transform)
-
+with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
+    cifar_training = datasets.CIFAR10('../data/', train=True, download=True, transform=train_transform)
+    cifar_testing = datasets.CIFAR10('../data/', train=False, download=True, transform=train_transform)
 
 def main():
     cfg = get_cfg()                                          # default config
     cfg.use_gpu = torch.cuda.is_available()                  # device: cuda
+    cfg.model.feature_dim = 128                              # nr of features to be extracted
     cfg.train.max_epoch = 50                                 # nr of epochs
     cfg.train.start_epoch = 0                                # starting epoch
-    cfg.model.feature_dim = 128                              # nr of features to be extracted
     cfg.train.batch_size = 64                                # mini batch size
     cfg.train.optim = 'sgd'                                  # optimizer
     cfg.train.lr = 0.003                                     # learning rate
@@ -49,7 +47,10 @@ def main():
     cfg.train.lr_scheduler = 'single_step'                   # learning rate scheduler
     cfg.train.stepsize = [20]                                # stepsize to decay learning rate
     cfg.train.gamma = 0.1                                    # learning rate decay multiplier
+    cfg.loss.name = 'softmax'                                # loss function name
+    cfg.loss.softmax.label_smooth = True                     # label smoothing regularizer
 
+    kwargs = {'num_workers': 1, 'pin_memory': True} if cfg.use_gpu else {}
     train_loader = DataLoader(cifar_training, batch_size=cfg.train.batch_size, shuffle=True, drop_last=True, **kwargs)
     val_loader = DataLoader(cifar_testing, batch_size=cfg.train.batch_size, shuffle=False, drop_last=True, **kwargs)
 
@@ -84,17 +85,27 @@ def main():
         gamma=cfg.train.gamma
     )
 
-    loss = CrossEntropyLoss(num_classes=10)
+    loss = CrossEntropyLoss(
+        num_classes=10,
+        use_gpu=cfg.use_gpu,
+        label_smooth=cfg.loss.softmax.label_smooth
+    )
 
-    fit(
+    engine = Engine(
         train_loader=train_loader,
-        val_loader=val_loader,
+        test_loader=val_loader,
         model=model,
-        loss_fn=loss,
         optimizer=optimizer,
-        n_epochs=cfg.train.max_epoch,
-        device='cuda',
-        metrics=[AccumulatedAccuracy()],
+        scheduler=lr_scheduler,
+        loss=loss,
+        use_gpu=True,
+        metric=AccumulatedAccuracy(),
+    )
+    engine.run(
+        start_epoch=0,
+        max_epoch=cfg.train.max_epoch,
+        start_eval=0,
+        eval_freq=5,
     )
 
     # torch.save(model.state_dict(), '../models/cross_entropy_osnet.pt')
