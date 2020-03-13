@@ -14,7 +14,7 @@ from collections import OrderedDict
 
 from torch.utils.tensorboard import SummaryWriter
 from utils.utils import mkdir_if_missing, AverageMeter
-from utils.torchutils import load_checkpoint
+from utils.torchutils import save_checkpoint, load_checkpoint
 
 
 class Engine(ABC):
@@ -153,6 +153,7 @@ class Engine(ABC):
         """
         print('Loading checkpoint from "{}"'.format(fpath))
         checkpoint = load_checkpoint(fpath)
+        assert 'state_dict' in checkpoint.keys()
         self.model.load_state_dict(checkpoint['state_dict'])
         print('Loaded model weights')
         if self.optimizer and 'optimizer' in checkpoint.keys():
@@ -274,15 +275,6 @@ class Engine(ABC):
         pass  # TODO
 
     def _save_checkpoint(self, epoch, save_dir, remove_module_from_keys=False):
-        r"""
-        Save checkpoint.
-
-        Args:
-            epoch (int): epoch number.
-            save_dir (str): directory to save checkpoint.
-            remove_module_from_keys (bool, optional): whether to remove "module."
-                from layer names. Default is False.
-        """
         state = {
             'model': 'osnet',
             'state_dict': self.model.state_dict(),
@@ -291,19 +283,7 @@ class Engine(ABC):
             'optimizer': self.optimizer.state_dict(),
             'scheduler': self.scheduler.state_dict(),
             }
-        mkdir_if_missing(save_dir)
-        # remove 'module.' in state_dict's keys
-        if remove_module_from_keys:
-            state_dict = state['state_dict']
-            new_state_dict = OrderedDict()
-            for k, v in state_dict.items():
-                if k.startswith('module.'):
-                    k = k[7:]
-                new_state_dict[k] = v
-            state['state_dict'] = new_state_dict
-        # save checkpoint
-        fpath = os.path.join(save_dir, state['model'] + '-epoch-' + str(state['epoch']) + '.pth.tar')
-        torch.save(state, fpath)
-        print('Checkpoint saved to "{}"'.format(fpath))
+        save_checkpoint(state, save_dir, remove_module_from_keys)
+
 
 

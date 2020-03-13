@@ -111,7 +111,7 @@ def main():
     # )
 
     engine.resume_from_checkpoint(
-        fpath='runs/osnet-epoch-2.pth.tar',
+        fpath='runs/osnet-epoch-7.pth.tar',
         max_epoch=cfg.train.max_epoch,
         start_eval=0,
         eval_freq=1,
