@@ -30,6 +30,7 @@ test_transform = transforms.Compose([
     transforms.Normalize((0.4915, 0.4823, 0.4468), (0.247, 0.2435, 0.2616)),
 ])
 
+# disable messages printed by DataLoader
 with open(os.devnull, "w") as f, contextlib.redirect_stdout(f):
     cifar_training = datasets.CIFAR10('../data/', train=True, download=True, transform=train_transform)
     cifar_testing = datasets.CIFAR10('../data/', train=False, download=True, transform=train_transform)
@@ -101,14 +102,20 @@ def main():
         use_gpu=True,
         metric=AccumulatedAccuracy(),
     )
-    engine.run(
-        start_epoch=0,
+
+    # engine.run(
+    #     start_epoch=0,
+    #     max_epoch=cfg.train.max_epoch,
+    #     start_eval=0,
+    #     eval_freq=1,
+    # )
+
+    engine.resume_from_checkpoint(
+        fpath='runs/osnet-epoch-2.pth.tar',
         max_epoch=cfg.train.max_epoch,
         start_eval=0,
-        eval_freq=5,
+        eval_freq=1,
     )
-
-    # torch.save(model.state_dict(), '../models/cross_entropy_osnet.pt')
 
 
 if __name__ == "__main__":

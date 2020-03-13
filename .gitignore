@@ -8,6 +8,7 @@ __pycache__/
 
 # Data
 data/
+/src/runs/
 
 # PyTorch pickle files
 *.hdf5
@@ -137,14 +138,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/src/data/MNIST/raw/t10k-images-idx3-ubyte
-/src/data/MNIST/raw/t10k-images-idx3-ubyte.gz
-/src/data/MNIST/raw/t10k-labels-idx1-ubyte
-/src/data/MNIST/raw/t10k-labels-idx1-ubyte.gz
-/src/data/MNIST/processed/test.pt
-/src/data/MNIST/raw/train-images-idx3-ubyte
-/src/data/MNIST/raw/train-images-idx3-ubyte.gz
-/src/data/MNIST/raw/train-labels-idx1-ubyte
-/src/data/MNIST/raw/train-labels-idx1-ubyte.gz
-/src/data/MNIST/processed/training.pt
-/src/runs/

@@ -4,13 +4,17 @@ Reference: torchreid
     - replace torchreid datamanager with pytorch dataloader
 """
 
+import os
 import time
-from abc import ABC, abstractmethod
+import shutil
 import datetime
 import torch
-from torch.utils.tensorboard import SummaryWriter
+from abc import ABC
+from collections import OrderedDict
 
-# from torchreid.utils import save_checkpoint
+from torch.utils.tensorboard import SummaryWriter
+from utils.utils import mkdir_if_missing, AverageMeter
+from utils.torchutils import load_checkpoint
 
 
 class Engine(ABC):
@@ -38,6 +42,7 @@ class Engine(ABC):
             metric=None,
             use_gpu=True
     ):
+        # TODO: implement engine state
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.model = model
@@ -101,13 +106,13 @@ class Engine(ABC):
                     and (epoch + 1) != max_epoch:
                 test_loss, test_metric = self._test_epoch()
                 self._log_epoch('Testing', epoch+1, max_epoch, test_loss, test_metric)
-                # self._save_checkpoint(epoch, test_metric, save_dir)
+                self._save_checkpoint(epoch+1, save_dir)
 
         if max_epoch > 0:
             print('Last epoch')
             test_loss, test_metric = self._test_epoch()
             self._log_epoch('Testing', max_epoch, max_epoch, test_loss, test_metric)
-            # self._save_checkpoint(epoch, test_metric, save_dir)
+            self._save_checkpoint(max_epoch, save_dir)
 
         elapsed = round(time.time() - time_start)
         elapsed = str(datetime.timedelta(seconds=elapsed))
@@ -115,6 +120,55 @@ class Engine(ABC):
 
         if self.writer:
             self.writer.close()
+
+    def resume_from_checkpoint(
+            self,
+            fpath,
+            save_dir='runs',
+            max_epoch=0,
+            print_freq=10,
+            fixbase_epoch=0,
+            open_layers=None,
+            start_eval=0,
+            eval_freq=-1,
+            test_only=False,
+    ):
+        r"""
+        Resumes training from a checkpoint.
+
+        Args:
+            fpath (str): path to checkpoint.
+            save_dir (str): directory to save model.
+            max_epoch (int): maximum epoch.
+            print_freq (int, optional): print_frequency. Default is 10.
+            fixbase_epoch (int, optional): number of epochs to train ``open_layers`` (new layers)
+                while keeping base layers frozen. Default is 0. ``fixbase_epoch`` is counted
+                in ``max_epoch``.
+            open_layers (str or list, optional): layers (attribute names) open for training.
+            start_eval (int, optional): from which epoch to start evaluation. Default is 0.
+            eval_freq (int, optional): evaluation frequency. Default is -1 (meaning evaluation
+                is only performed at the end of training).
+            test_only (bool, optional): if True, only runs evaluation on test dataset.
+                Default is False.
+        """
+        print('Loading checkpoint from "{}"'.format(fpath))
+        checkpoint = load_checkpoint(fpath)
+        self.model.load_state_dict(checkpoint['state_dict'])
+        print('Loaded model weights')
+        if self.optimizer and 'optimizer' in checkpoint.keys():
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+            print('Loaded optimizer')
+        if self.scheduler and 'scheduler' in checkpoint.keys():
+            self.scheduler.load_state_dict(checkpoint['scheduler'])
+            print('Loaded scheduler')
+        start_epoch = checkpoint['epoch']
+        message = 'Resume training from epoch {}'.format(start_epoch)
+        if 'metric' in checkpoint.keys():
+            message += ' ({}: {:.1f}%)'.format(checkpoint['metric'].name(), checkpoint['metric'].value())
+        print(message)
+        self.run(save_dir, start_epoch, max_epoch, print_freq,
+                 fixbase_epoch, open_layers, start_eval, eval_freq, test_only)
+
 
     def _train_epoch(self):
         """
@@ -206,28 +260,50 @@ class Engine(ABC):
 
     @staticmethod
     def _parse_data_for_training(data):
-        pass
+        pass  # TODO
 
     @staticmethod
     def _parse_data_for_testing(data):
-        pass
+        pass  # TODO
 
     @staticmethod
     def _parse_features(data):
-        pass
+        pass  # TODO
 
     def _compute_loss(self):
-        pass
+        pass  # TODO
 
-    def _save_checkpoint(self, epoch, rank1, save_dir, is_best=False):
-        save_checkpoint(
-            {
-                'state_dict': self.model.state_dict(),
-                'epoch': epoch + 1,
-                'rank1': rank1,
-                'optimizer': self.optimizer.state_dict(),
-                'scheduler': self.scheduler.state_dict(),
-            },
-            save_dir,
-            is_best=is_best
-        )
+    def _save_checkpoint(self, epoch, save_dir, remove_module_from_keys=False):
+        r"""
+        Save checkpoint.
+
+        Args:
+            epoch (int): epoch number.
+            save_dir (str): directory to save checkpoint.
+            remove_module_from_keys (bool, optional): whether to remove "module."
+                from layer names. Default is False.
+        """
+        state = {
+            'model': 'osnet',
+            'state_dict': self.model.state_dict(),
+            'epoch': epoch,
+            'metric': self.eval_metric,
+            'optimizer': self.optimizer.state_dict(),
+            'scheduler': self.scheduler.state_dict(),
+            }
+        mkdir_if_missing(save_dir)
+        # remove 'module.' in state_dict's keys
+        if remove_module_from_keys:
+            state_dict = state['state_dict']
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                if k.startswith('module.'):
+                    k = k[7:]
+                new_state_dict[k] = v
+            state['state_dict'] = new_state_dict
+        # save checkpoint
+        fpath = os.path.join(save_dir, state['model'] + '-epoch-' + str(state['epoch']) + '.pth.tar')
+        torch.save(state, fpath)
+        print('Checkpoint saved to "{}"'.format(fpath))
+
+
