@@ -4,22 +4,18 @@ Reference: torchreid
     - replace torchreid datamanager with pytorch dataloader
 """
 
-import os
 import time
-import shutil
 import datetime
 import torch
-from abc import ABC
-from collections import OrderedDict
 
 from torch.utils.tensorboard import SummaryWriter
-from utils.utils import mkdir_if_missing, AverageMeter
+from utils.utils import AverageMeter
 from utils.torchutils import save_checkpoint, load_checkpoint
 
 
-class Engine(ABC):
+class Engine(object):
     """
-    A generic base Engine class.
+    Base Engine class.
 
     Args:
         train_loader: train data, an instance of ``torch.utils.data.DataLoader``
@@ -42,7 +38,7 @@ class Engine(ABC):
             metric=None,
             use_gpu=True
     ):
-        # TODO: implement engine state
+        # TODO: implement internal engine state
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.model = model
@@ -54,6 +50,7 @@ class Engine(ABC):
         self.device = torch.device('cuda' if self.use_gpu else 'cpu')
         self.writer = None
 
+    # TODO: implement print freq and open/frozen layers
     def run(
             self,
             save_dir='runs',
@@ -183,21 +180,13 @@ class Engine(ABC):
         num_batches = len(self.train_loader)
 
         for batch_idx, (data, target) in enumerate(self.train_loader):
-            # parse data for training
-            target = (target.to(self.device),) if len(target) > 0 else None
-            if type(data) not in (tuple, list):
-                data = (data,)
-            data = tuple(d.to(self.device) for d in data)
+            # parse inputs
+            data, target = self._parse_inputs(data, target)
             # extract features
             self.optimizer.zero_grad()
             outputs = self.model(*data)
-            # parse loss inputs
-            loss_inputs = outputs
-            if target:
-                loss_inputs += target
-            # compute loss
-            loss_outputs = self.loss_fn(*loss_inputs)
-            loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs
+            # compute loss and do backward step
+            loss = self._compute_loss(outputs, target)
             training_loss += loss.item()
             loss.backward()
             self.optimizer.step()
@@ -207,6 +196,7 @@ class Engine(ABC):
         if self.scheduler is not None:
             self.scheduler.step()
 
+        # TODO: use average meter from utils
         training_loss /= num_batches
         return training_loss, self.eval_metric
 
@@ -224,55 +214,34 @@ class Engine(ABC):
                 self.eval_metric.reset()
 
             for batch_idx, (data, target) in enumerate(self.test_loader):
-                # parse data for testing
-                target = (target.to(self.device),) if len(target) > 0 else None
-                if type(data) not in (tuple, list):
-                    data = (data,)
-                data = tuple(d.to(self.device) for d in data)
+                # parse inputs
+                data, target = self._parse_inputs(data, target)
                 # extract features
                 outputs = self.model(*data)
-                # parse features
-                if type(outputs) not in (tuple, list):
-                    outputs = (outputs,)
-                # parse loss inputs
-                loss_inputs = outputs
-                if target:
-                    loss_inputs += target
                 # compute loss
-                loss_outputs = self.loss_fn(*loss_inputs)
-                # parse loss outputs
-                loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs
+                loss = self._compute_loss(outputs, target)
                 testing_loss += loss.item()
                 # compute evaluation metric
                 self.eval_metric(outputs, target)
 
+        # TODO: use average meter from utils
         testing_loss /= num_batches
         return testing_loss, self.eval_metric
 
-    def _extract_features(self, x):
-        self.model.eval()
-        return self.model(x)
+    def _parse_inputs(self, data, target):
+        target = (target.to(self.device),) if len(target) > 0 else None
+        if type(data) not in (tuple, list):
+            data = (data,)
+        data = tuple(d.to(self.device) for d in data)
+        return data, target
 
-    @staticmethod
-    def _log_epoch(stage, epoch, max_epoch, loss, metric):
-        message = 'Epoch: {}/{}. {} average loss: {:.3f}'.format(epoch, max_epoch, stage, loss)
-        message += '\t{}: {:.1f} %'.format(metric.name(), metric.value())
-        print(message)
-
-    @staticmethod
-    def _parse_data_for_training(data):
-        pass  # TODO
-
-    @staticmethod
-    def _parse_data_for_testing(data):
-        pass  # TODO
-
-    @staticmethod
-    def _parse_features(data):
-        pass  # TODO
-
-    def _compute_loss(self):
-        pass  # TODO
+    def _compute_loss(self, outputs, target):
+        loss_inputs = outputs
+        if target:
+            loss_inputs += target
+        loss_outputs = self.loss_fn(*loss_inputs)
+        loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs
+        return loss
 
     def _save_checkpoint(self, epoch, save_dir, remove_module_from_keys=False):
         state = {
@@ -284,6 +253,12 @@ class Engine(ABC):
             'scheduler': self.scheduler.state_dict(),
             }
         save_checkpoint(state, save_dir, remove_module_from_keys)
+
+    @staticmethod
+    def _log_epoch(stage, epoch, max_epoch, loss, metric):
+        message = 'Epoch: {}/{}. {} average loss: {:.3f}'.format(epoch, max_epoch, stage, loss)
+        message += '\t{}: {:.1f} %'.format(metric.name(), metric.value())
+        print(message)
 
 
 
