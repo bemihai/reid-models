@@ -11,6 +11,7 @@ from torch.backends import cudnn
 from optim.optimizer import build_optimizer
 from optim.scheduler import build_lr_scheduler
 from losses.loss import CrossEntropyLoss
+from utils.torchutils import load_pretrained_weights
 
 from config.config import get_cfg
 from models.networks import ClassificationNet
@@ -68,6 +69,8 @@ def main():
         n_classes=10
     )
 
+    # load_pretrained_weights(model, 'runs/osnet-epoch-7.pth.tar')
+
     if cfg.use_gpu:
         cudnn.benchmark = True
         model = nn.DataParallel(model).cuda()
@@ -108,14 +111,18 @@ def main():
     #     max_epoch=cfg.train.max_epoch,
     #     start_eval=0,
     #     eval_freq=1,
+    #     print_freq = 100,
     # )
 
     engine.resume_from_checkpoint(
-        fpath='runs/osnet-epoch-7.pth.tar',
+        fpath='runs/osnet-epoch-10.pth.tar',
         max_epoch=cfg.train.max_epoch,
         start_eval=0,
         eval_freq=1,
+        print_freq=100,
     )
+
+
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ import errno
 class AverageMeter(object):
     """ Computes and stores the average and current value. """
 
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.val = 0
         self.avg = 0
         self.sum = 0

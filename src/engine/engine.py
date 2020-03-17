@@ -10,7 +10,7 @@ import torch
 
 from torch.utils.tensorboard import SummaryWriter
 from utils.utils import AverageMeter
-from utils.torchutils import save_checkpoint, load_checkpoint
+from utils.torchutils import save_checkpoint, load_checkpoint, open_all_layers, open_specified_layers
 
 
 class Engine(object):
@@ -83,8 +83,7 @@ class Engine(object):
         """
 
         if test_only:
-            test_loss, test_metric = self._test_epoch()
-            self._log_epoch('Testing', 1, max_epoch, test_loss, test_metric)
+            self._test_epoch(start_epoch, max_epoch)
             return
 
         if self.writer is None:
@@ -94,21 +93,18 @@ class Engine(object):
         print('Start training')
 
         for epoch in range(start_epoch, max_epoch):
-            train_loss, train_metric = self._train_epoch()
-            self._log_epoch('Training', epoch+1, max_epoch, train_loss, train_metric)
+            self._train_epoch(epoch, max_epoch, fixbase_epoch, open_layers, print_freq)
 
             if (epoch + 1) >= start_eval \
                     and eval_freq > 0 \
                     and (epoch + 1) % eval_freq == 0 \
                     and (epoch + 1) != max_epoch:
-                test_loss, test_metric = self._test_epoch()
-                self._log_epoch('Testing', epoch+1, max_epoch, test_loss, test_metric)
-                self._save_checkpoint(epoch+1, save_dir)
+                self._test_epoch(epoch, max_epoch)
+                self._save_checkpoint(epoch, save_dir)
 
         if max_epoch > 0:
             print('Last epoch')
-            test_loss, test_metric = self._test_epoch()
-            self._log_epoch('Testing', max_epoch, max_epoch, test_loss, test_metric)
+            self._test_epoch(max_epoch, max_epoch)
             self._save_checkpoint(max_epoch, save_dir)
 
         elapsed = round(time.time() - time_start)
@@ -168,7 +164,7 @@ class Engine(object):
                  fixbase_epoch, open_layers, start_eval, eval_freq, test_only)
 
 
-    def _train_epoch(self):
+    def _train_epoch(self, epoch, max_epoch, fixbase_epoch, open_layers, print_freq):
         """
         Performs training for one epoch.
         """
@@ -179,6 +175,17 @@ class Engine(object):
         training_loss = 0
         num_batches = len(self.train_loader)
 
+        losses = AverageMeter('Loss')
+        metrics = AverageMeter('Accuracy')
+        batch_time = AverageMeter('Batch time')
+
+        if (epoch + 1) <= fixbase_epoch and open_layers:
+            print('* Only train {} (epoch: {}/{})'.format(open_layers, epoch + 1, fixbase_epoch))
+            open_specified_layers(self.model, open_layers)
+        else:
+            open_all_layers(self.model)
+
+        end = time.time()
         for batch_idx, (data, target) in enumerate(self.train_loader):
             # parse inputs
             data, target = self._parse_inputs(data, target)
@@ -190,23 +197,28 @@ class Engine(object):
             training_loss += loss.item()
             loss.backward()
             self.optimizer.step()
+            batch_time.update(time.time() - end)
+            losses.update(loss.item())
             # compute evaluation metric
             self.eval_metric(outputs, target)
+            metrics.update(self.eval_metric.value())
+
+            if (batch_idx + 1) % print_freq == 0:
+                self._log_train_iteration(epoch, max_epoch, batch_idx, num_batches, batch_time, losses, metrics)
+
+            end = time.time()
 
         if self.scheduler is not None:
             self.scheduler.step()
 
-        # TODO: use average meter from utils
-        training_loss /= num_batches
-        return training_loss, self.eval_metric
-
-    def _test_epoch(self):
+    def _test_epoch(self, epoch, max_epoch):
         """
         Performs training for one epoch.
         """
         self.model.eval()
-        testing_loss = 0
-        num_batches = len(self.test_loader)
+
+        losses = AverageMeter('Loss')
+        metrics = AverageMeter('Accuracy')
 
         with torch.no_grad():
             # reset evaluation metric
@@ -220,13 +232,12 @@ class Engine(object):
                 outputs = self.model(*data)
                 # compute loss
                 loss = self._compute_loss(outputs, target)
-                testing_loss += loss.item()
+                losses.update(loss.item())
                 # compute evaluation metric
                 self.eval_metric(outputs, target)
+                metrics.update(self.eval_metric.value())
 
-        # TODO: use average meter from utils
-        testing_loss /= num_batches
-        return testing_loss, self.eval_metric
+            self._log_test_iteration(epoch, max_epoch, losses, metrics)
 
     def _parse_inputs(self, data, target):
         target = (target.to(self.device),) if len(target) > 0 else None
@@ -247,7 +258,7 @@ class Engine(object):
         state = {
             'model': 'osnet',
             'state_dict': self.model.state_dict(),
-            'epoch': epoch,
+            'epoch': epoch + 1,
             'metric': self.eval_metric,
             'optimizer': self.optimizer.state_dict(),
             'scheduler': self.scheduler.state_dict(),
@@ -255,10 +266,25 @@ class Engine(object):
         save_checkpoint(state, save_dir, remove_module_from_keys)
 
     @staticmethod
-    def _log_epoch(stage, epoch, max_epoch, loss, metric):
-        message = 'Epoch: {}/{}. {} average loss: {:.3f}'.format(epoch, max_epoch, stage, loss)
-        message += '\t{}: {:.1f} %'.format(metric.name(), metric.value())
-        print(message)
+    def _log_train_iteration(epoch, max_epoch, batch_idx, num_batches, batch_time, losses, metrics):
+        eta_sec = batch_time.avg * (num_batches - (batch_idx + 1) + (max_epoch - (epoch + 1)) * num_batches)
+        eta_str = str(datetime.timedelta(seconds=int(eta_sec)))
+        progress = 100*(batch_idx + 1)/num_batches
+        print(
+            'Epoch: [{0}/{1}][ {prog:.0f}% ] ' 
+            'Avg Train Loss: {loss.avg:.3f} | '
+            'Avg Train {metrics.name}: {metrics.avg:.2f}% | '
+            'ET: {eta}'.format(epoch + 1, max_epoch, prog=progress, loss=losses, metrics=metrics, eta=eta_str)
+        )
+
+    @staticmethod
+    def _log_test_iteration(epoch, max_epoch, losses, metrics):
+        print(
+            'Epoch: [{0}/{1}] ' 
+            'Avg Test Loss: {loss.avg:.3f} | '
+            'Avg Test {metrics.name}: {metrics.avg:.2f}% '
+            .format(epoch + 1, max_epoch, loss=losses, metrics=metrics)
+        )
 
 
 

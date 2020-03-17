@@ -1,4 +1,3 @@
-
 import pickle
 import os
 import warnings
@@ -36,6 +35,7 @@ def save_checkpoint(state, save_dir, remove_module_from_keys=False):
     torch.save(state, fpath)
     print('Checkpoint saved to "{}"'.format(fpath))
 
+
 def load_checkpoint(fpath):
     r"""
     Load checkpoint.
@@ -59,11 +59,13 @@ def load_checkpoint(fpath):
         raise
     return checkpoint
 
+
 def open_all_layers(model):
     """ Open all layers in a model for training. """
     model.train()
     for p in model.parameters():
         p.requires_grad = True
+
 
 def open_specified_layers(model, open_layers):
     r"""
@@ -95,7 +97,7 @@ def open_specified_layers(model, open_layers):
                 p.requires_grad = False
 
 
-def load_pretrained_weights(model, fpath):
+def load_pretrained_weights(model, fpath, remove_module_from_keys=False):
     r"""
     Load pretrianed weights to model.
 
@@ -106,9 +108,11 @@ def load_pretrained_weights(model, fpath):
     Args:
         model (nn.Module): network model.
         fpath (str): path to pretrained weights (or checkpoint).
+        remove_module_from_keys (bool, optional): whether to remove "module."
+            from layer names. Default is False.
     """
     checkpoint = load_checkpoint(fpath)
-    if 'state_dict' in checkpoint:
+    if 'state_dict' in checkpoint.keys():
         state_dict = checkpoint['state_dict']
     else:
         state_dict = checkpoint
@@ -118,8 +122,8 @@ def load_pretrained_weights(model, fpath):
     matched_layers, discarded_layers = [], []
 
     for k, v in state_dict.items():
-        if k.startswith('module.'):
-            k = k[7:]  # discard module.
+        if remove_module_from_keys and k.startswith('module.'):
+            k = k[7:]  # remove "module." from layers names
 
         if k in model_dict and model_dict[k].size() == v.size():
             new_state_dict[k] = v
@@ -131,13 +135,10 @@ def load_pretrained_weights(model, fpath):
     model.load_state_dict(model_dict)
 
     if len(matched_layers) == 0:
-        warnings.warn(
-            'The pretrained weights "{}" cannot be loaded, please check the key names manually '
-            '(** ignored and continue **)'.format(fpath)
-        )
+        warnings.warn('The pretrained weights "{}" cannot be loaded, please check the key names manually '
+                      '(** ignored and continue **)'.format(fpath))
     else:
         print('Successfully loaded pretrained weights from "{}"'.format(fpath))
         if len(discarded_layers) > 0:
             print('** The following layers are discarded due to unmatched keys or layer size: {}'
-                  .format(discarded_layers)
-            )
+                  .format(discarded_layers))
